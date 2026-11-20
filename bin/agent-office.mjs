@@ -137,6 +137,8 @@ async function main() {
   watcher.on('activity', (a) => srv.broadcast(a))
   const agyWatcher = useAgy ? new AgyWatcher(projectDir) : null
   agyWatcher?.on('activity', (a) => srv.broadcast(a))
+  agyWatcher?.on('conversation', (id) => console.log(`    Antigravity: thấy hội thoại mới ${id.slice(0, 8)} – đang theo dõi.`))
+  agyWatcher?.on('activity', (a) => a.type === 'prompt' && console.log(`    Antigravity nhận yêu cầu (${new Date().toLocaleTimeString('vi-VN')}).`))
 
   // nạp sẵn lịch sử gần nhất vào nhật ký (chế độ live): Claude Code + Antigravity, ghép theo giờ
   if (!args.replay) {
@@ -157,8 +159,16 @@ async function main() {
       // các hội thoại Antigravity diễn ra trong khoảng thời gian của phiên (vd subagent gọi agy)
       const from = tl.length ? tl[0].t - 60_000 : 0
       const to = tl.length ? tl[tl.length - 1].t + 15 * 60_000 : Infinity
-      const agy = agyTimeline(projectDir, { from, to })
-      tl = mergeTimelines(tl, tl.length ? agy : agy.slice(-200))
+      const all = agyTimeline(projectDir)
+      const inside = all.filter((x) => x.t >= from && x.t <= to)
+      tl = mergeTimelines(tl, tl.length ? inside : inside.slice(-200))
+      // hoạt động Antigravity ngoài đoạn phát lại (vd chat agy sau phiên Claude Code đó) → vẫn có trong nhật ký
+      const replayed = new Set(tl.map((x) => x.a))
+      const outside = all.filter((x) => !replayed.has(x.a)).slice(-40)
+      if (outside.length) {
+        srv.broadcast({ type: 'history', session: 'recent', items: outside.map(({ t, a }) => ({ at: t, a })) })
+        console.log(`    Nhật ký: nạp ${outside.length} hoạt động Antigravity ngoài đoạn phát lại.`)
+      }
     }
     if (tl.length) {
       await srv.onFirstClient

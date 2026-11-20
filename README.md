@@ -99,6 +99,9 @@ Văn phòng tự sinh theo số agent: 8 phòng thiết kế sẵn là "mẫu ph
 | Mở `localhost:5173` thấy Minh, Lan, Phúc… | Đó là `npm run dev` (chế độ mô phỏng), không phải bản live – mở `http://127.0.0.1:4317/` |
 | `Cổng 4317 đang bận` | Đã có server cũ đang chạy → tắt cửa sổ đó (Ctrl+C) hoặc thêm `--port 4320` |
 | Live không cập nhật | Kiểm tra bạn đang dùng Claude Code trong **đúng thư mục project** đã truyền cho lệnh `run` |
+| Chat `agy`/Claude Code **trước** khi mở server, không thấy nhân vật diễn | Bình thường: live chỉ *diễn* hoạt động xảy ra **sau** khi server chạy; hoạt động trước đó nằm trong **nhật ký** (cột phải + bấm phòng agent). Muốn xem diễn lại: `--replay` |
+| Không thấy hoạt động Antigravity | Bấm phòng **antigravity** để xem nhật ký riêng (cột chung chỉ hiện 60 dòng mới nhất). Cửa sổ CLI in `Antigravity nhận yêu cầu (…)` mỗi khi `agy` nhận prompt mới – nếu không thấy dòng này, `agy` đang chạy ở thư mục khác project |
+| Sửa code / cập nhật bản mới mà server vẫn chạy bản cũ | Server đang chạy không tự nạp code mới → `Ctrl+C` rồi chạy lại lệnh |
 
 ## Phát triển
 

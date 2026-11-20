@@ -174,6 +174,7 @@ export class AgyWatcher extends EventEmitter {
         /* transcript chưa được tạo */
       }
       this.files.set(conv, { offset: initial ? size : 0, buf: '' })
+      if (!initial) this.emit('conversation', conv)
     }
   }
 
