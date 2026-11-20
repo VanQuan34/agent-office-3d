@@ -129,6 +129,51 @@ describe('ActivityMapper: hoạt động Claude Code → hành động trong vă
     expect(engine.feed.every((f) => typeof f.at === 'number')).toBe(true)
   })
 
+  it('subagent gọi agy → mang hồ sơ sang Antigravity → Antigravity xong → mang kết quả về đúng người giao', async () => {
+    const AGY = { key: 'antigravity', name: 'Antigravity', external: true }
+    const { Engine, ActivityMapper } = await loadLive([MAIN, ...SAMPLE.slice(0, 2), AGY])
+    const engine = new Engine({ random: () => 0.1 })
+    const m = new ActivityMapper()
+    m.attach(engine)
+    const delivered: string[] = []
+    engine.onNotice((n) => n.type === 'handoff_delivered' && delivered.push(`${n.from}->${n.to}`))
+    const run = (sec: number) => {
+      for (let i = 0; i < sec * 20; i++) engine.update(0.05)
+    }
+    const disp = SAMPLE[1].key
+    m.handle({ type: 'prompt', session: 's', text: 'Giao plan cho agy' })
+    m.handle({ type: 'delegate', id: 'd1', from: 'main', to: disp, description: 'Dispatch plan' })
+    run(60)
+    m.handle({ type: 'tool', agent: disp, tool: 'Bash', summary: 'Giao plan cho agy', launches: 'antigravity' })
+    m.handle({ type: 'prompt', agent: 'antigravity', session: 'conv1', text: 'Thực hiện PLAN.md' })
+    run(60)
+    expect(delivered).toContain(`${disp}->antigravity`)
+    m.handle({ type: 'tool', agent: 'antigravity', tool: 'Edit', summary: 'Edit Login.tsx' })
+    expect(engine.agentById.antigravity.bubble?.text).toContain('Login.tsx')
+    m.handle({ type: 'turn_end', agent: 'antigravity', session: 'conv1' })
+    run(60)
+    expect(delivered).toContain(`antigravity->${disp}`) // trả về người giao, không phải agent chính
+    m.handle({ type: 'delegate_done', id: 'd1' })
+    m.handle({ type: 'turn_end', session: 's' })
+    run(90)
+    expect(engine.tasks.size).toBe(0)
+  })
+
+  it('chat trực tiếp với Antigravity → Antigravity tự nhận và hoàn tất yêu cầu', async () => {
+    const { Engine, ActivityMapper } = await loadLive([MAIN, { key: 'antigravity', name: 'Antigravity', external: true }])
+    const engine = new Engine({ random: () => 0.1 })
+    const m = new ActivityMapper()
+    m.attach(engine)
+    m.handle({ type: 'prompt', agent: 'antigravity', session: 'c', text: 'Viết README' })
+    for (let i = 0; i < 40; i++) engine.update(0.05)
+    expect([...engine.tasks.values()].map((t) => t.dept)).toEqual(['antigravity'])
+    m.handle({ type: 'tool', agent: 'antigravity', tool: 'Write', summary: 'Write README.md' })
+    m.handle({ type: 'turn_end', agent: 'antigravity', session: 'c' })
+    for (let i = 0; i < 40 * 20; i++) engine.update(0.05)
+    expect(engine.tasks.size).toBe(0)
+    expect(engine.completedCount).toBe(1)
+  })
+
   it('agent không có phòng → agent chính nhận thay, không lỗi', async () => {
     const { Engine, ActivityMapper } = await loadLive([MAIN])
     const engine = new Engine()

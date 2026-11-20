@@ -52,6 +52,12 @@ export function summarizeTool(name, input = {}) {
   }
 }
 
+/** Lệnh shell có gọi Antigravity CLI (`agy …`) không */
+export function launchesAgy(command) {
+  const cmd = String(command ?? '')
+  return /(^|[\s;&|("'`/\\])agy(\.exe|\.cmd|\.bat)?(?=\s|$|["'`)])/i.test(cmd) || /\bantigravity\b/i.test(cmd)
+}
+
 /** Lấy text người dùng gõ (bỏ system-reminder, khối lệnh nội bộ…) */
 export function promptText(content) {
   let text = typeof content === 'string' ? content : Array.isArray(content) ? content.filter((p) => p.type === 'text').map((p) => p.text).join('\n') : ''
@@ -103,7 +109,10 @@ export class Translator {
           this.pending.set(p.id, { async: false, done: false })
           out.push({ type: 'delegate', id: p.id, from: who, to: p.input?.subagent_type || 'general-purpose', description: p.input?.description || '' })
         } else {
-          out.push({ type: 'tool', agent: who, tool: p.name, summary: summarizeTool(p.name, p.input) })
+          const a = { type: 'tool', agent: who, tool: p.name, summary: summarizeTool(p.name, p.input) }
+          // lệnh shell gọi Antigravity CLI → visualizer nối sang phòng Antigravity
+          if ((p.name === 'Bash' || p.name === 'PowerShell') && launchesAgy(p.input?.command)) a.launches = 'antigravity'
+          out.push(a)
         }
       }
       const stop = e.message?.stop_reason
@@ -198,8 +207,10 @@ export class TranscriptWatcher extends EventEmitter {
     } catch {
       return
     }
-    if (initial && now - st.mtimeMs > this.activeWithinMs) return
-    // file có sẵn lúc khởi động: bắt đầu từ cuối; file mới: đọc từ đầu
+    // File có sẵn lúc khởi động: bắt đầu từ cuối (kể cả file cũ – nếu bỏ qua, lượt quét sau sẽ coi
+    // là file mới và đọc lại từ đầu → phát lại lịch sử như hoạt động live). File tạo sau: đọc từ đầu.
+    // Phiên cũ tạo trước khi CLI chạy nhưng vẫn mở và được ghi thêm sau đó cũng được theo dõi.
+    void now
     this.files.set(file, { offset: initial ? st.size : 0, buf: '', who, metaFile, meta: null })
   }
 

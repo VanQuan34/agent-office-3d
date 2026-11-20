@@ -14,6 +14,8 @@ export interface RosterAgent {
   color?: string
   isMain?: boolean
   builtIn?: boolean
+  /** agent ngoài Claude Code (vd Antigravity CLI) */
+  external?: boolean
 }
 
 export interface OfficeConfig {

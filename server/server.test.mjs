@@ -109,6 +109,25 @@ describe('transcript trên đĩa', () => {
     expect(typeof h.items[0].at).toBe('number')
   })
 
+  it('watcher không phát lại file transcript cũ (lỗi: file > 12h bị đọc lại từ đầu ở lượt quét sau)', async () => {
+    const old = path.join(tmp, 'tx-old')
+    fs.mkdirSync(old, { recursive: true })
+    const f = path.join(old, 'OLD.jsonl')
+    fs.writeFileSync(f, [user('cũ', 0), asst([toolUse('r', 'Read', { file_path: 'a.ts' })], 1)].map(line).join(''))
+    const twoDaysAgo = (Date.now() - 48 * 3600_000) / 1000
+    fs.utimesSync(f, twoDaysAgo, twoDaysAgo)
+    const got = []
+    const w = new TranscriptWatcher(old, { pollMs: 20 })
+    w.on('activity', (a) => got.push(a))
+    w.start()
+    await new Promise((r) => setTimeout(r, 120))
+    expect(got).toEqual([])
+    fs.appendFileSync(f, line(asst([toolUse('e', 'Edit', { file_path: 'b.ts' })], 2)))
+    await new Promise((r) => setTimeout(r, 80))
+    w.stop()
+    expect(got.map((a) => a.summary)).toEqual(['Edit b.ts'])
+  })
+
   it('watcher live: chỉ phát phần ghi thêm, đọc subagent mới và cờ finished', async () => {
     const got = []
     const w = new TranscriptWatcher(tx, { pollMs: 20 })

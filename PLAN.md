@@ -236,6 +236,14 @@ Engine tự lo "diễn" event thành hành động (đi tới, ngồi, nói…),
 - [x] Kiểm chứng trên một project thật (13 agent, phát lại phiên có subagent) và live trên chính phiên đang chạy
 - [x] 19 test (engine, bố cục 1/6/14 agent, ánh xạ hoạt động, dịch transcript, watcher live)
 
+### 2026-11-20 – Hỗ trợ Antigravity CLI + sửa lỗi nhật ký
+- [x] `server/antigravity.mjs`: đọc `~/.gemini/antigravity-cli` (history.jsonl → hội thoại theo workspace, transcript từng hội thoại), live + phát lại + nạp lịch sử
+- [x] Phòng "antigravity" tự bật khi project từng dùng `agy`; `--agy` / `--no-agy`
+- [x] Nối Claude Code → Antigravity: lệnh Bash gọi `agy` + prompt Antigravity ngay sau → diễn như giao việc, kết quả trả về đúng agent đã gọi
+- [x] Sửa lỗi: watcher đọc lại từ đầu các transcript cũ > 12h → lịch sử bị diễn lại như live với giờ sai
+- [x] Nhật ký: giờ thật, nhật ký riêng từng agent, gợi ý khi trống; CLI bỏ qua `# chú thích` lỡ dán vào lệnh
+- [x] 30 test
+
 ### Việc tiếp theo
 - [ ] Tinh chỉnh nhân vật: đường nối ở khuỷu/gối, biểu cảm (chớp mắt, khẩu hình khi nói)
 - [ ] (Tuỳ chọn) Thay bằng GLB từ công cụ ngoài – giữ đúng tên xương ở `src/character/rig.ts` để dùng lại animation

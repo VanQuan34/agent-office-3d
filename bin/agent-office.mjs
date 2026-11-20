@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { AGY_ROSTER_ENTRY, AgyWatcher, agyConversationsFor, agyTimeline, wantsAntigravity } from '../server/antigravity.mjs'
 import { buildRoster, findTranscriptDir } from '../server/discover.mjs'
 import { startServer } from '../server/http.mjs'
 import { latestSession, recentHistory, sessionTimeline, TranscriptWatcher } from '../server/transcripts.mjs'
@@ -15,12 +16,14 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const DIST = path.resolve(here, '..', 'dist')
 
 function parseArgs(argv) {
-  const args = { _: [], port: 4317, open: true, replay: false, speed: 4, session: null, help: false }
+  const args = { _: [], port: 4317, open: true, replay: false, speed: 4, session: null, help: false, agy: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a.startsWith('#')) break // phần còn lại là chú thích (cmd.exe không hiểu dấu #)
     if (a === '--port' || a === '-p') args.port = Number(argv[++i])
     else if (a === '--no-open') args.open = false
+    else if (a === '--agy') args.agy = true
+    else if (a === '--no-agy') args.agy = false
     else if (a === '--replay') args.replay = true
     else if (a === '--speed') args.speed = Number(argv[++i]) || 4
     else if (a === '--session') args.session = argv[++i]
@@ -31,7 +34,7 @@ function parseArgs(argv) {
 }
 
 const HELP = `
-agent-office – văn phòng 3D cho các agent Claude Code của project
+agent-office – văn phòng 3D cho các agent Claude Code (và Antigravity CLI) của project
 
 Cách dùng:
   agent-office run [project]      Mở văn phòng 3D, theo dõi agent của project theo thời gian thực
@@ -43,9 +46,11 @@ Tuỳ chọn cho "run":
   --session <id>     Chọn phiên để phát lại
   --speed <n>        Tốc độ phát lại (mặc định 4x)
   --no-open          Không tự mở trình duyệt
+  --agy / --no-agy   Bật / tắt phòng Antigravity CLI (mặc định: tự bật nếu project từng dùng agy)
 
 [project] mặc định là thư mục hiện tại. Agent lấy từ .claude/agents/*.md và lịch sử transcript
-trong ~/.claude/projects/. Server chỉ lắng nghe trên 127.0.0.1, không gửi dữ liệu ra ngoài.
+trong ~/.claude/projects/; Antigravity CLI đọc từ ~/.gemini/antigravity-cli/.
+Server chỉ lắng nghe trên 127.0.0.1, không gửi dữ liệu ra ngoài.
 `
 
 function openBrowser(url) {
@@ -54,10 +59,12 @@ function openBrowser(url) {
   spawn(cmd, args, { stdio: 'ignore', detached: true }).unref()
 }
 
-async function replay(txDir, sessionId, speed, broadcast) {
-  const tl = sessionTimeline(txDir, sessionId)
+/** Ghép 2 dòng thời gian {t, a} theo thời gian */
+const mergeTimelines = (...lists) => lists.flat().sort((x, y) => x.t - y.t)
+
+async function replay(tl, label, speed, broadcast) {
   if (!tl.length) return 0
-  broadcast({ type: 'status', text: `Phát lại phiên ${sessionId.slice(0, 8)} (${tl.length} sự kiện)` })
+  broadcast({ type: 'status', text: `Phát lại ${label} (${tl.length} sự kiện)` })
   let prev = tl[0].t
   for (const { t, a } of tl) {
     // nén khoảng lặng: tối đa 3s thực, chia theo tốc độ
@@ -86,11 +93,15 @@ async function main() {
   }
   const txDir = findTranscriptDir(projectDir)
   const roster = buildRoster(projectDir, { txDir })
+  // Antigravity CLI: thêm phòng nếu project từng chạy agy (hoặc agent nào đó nhắc tới agy)
+  const useAgy = args.agy ?? wantsAntigravity(projectDir, roster)
+  if (useAgy) roster.push(AGY_ROSTER_ENTRY)
 
   if (cmd === 'agents') {
     console.log(`Project: ${projectDir}`)
     console.log(`Transcript: ${txDir ?? '(chưa có – project chưa từng chạy Claude Code?)'}`)
-    for (const a of roster) console.log(`  • ${a.key.padEnd(28)} ${a.isMain ? '(agent chính)' : a.builtIn ? '(có sẵn)' : a.source ?? ''}  ${a.description ? '– ' + a.description.slice(0, 70) : ''}`)
+    for (const a of roster) console.log(`  • ${a.key.padEnd(28)} ${a.isMain ? '(agent chính)' : a.builtIn ? '(có sẵn)' : a.external ? '(agent ngoài)' : a.source ?? ''}  ${a.description ? '– ' + a.description.slice(0, 70) : ''}`)
+    if (useAgy) console.log(`Antigravity: ${agyConversationsFor(projectDir).size} hội thoại của project này`)
     return
   }
   if (cmd !== 'run') {
@@ -118,31 +129,46 @@ async function main() {
   console.log(`\n  ◆ Agent Office – ${config.project.name}`)
   console.log(`    ${roster.length} agent: ${roster.map((a) => a.key).join(', ')}`)
   console.log(`    Transcript: ${txDir ?? 'chưa có – sẽ hiển thị khi Claude Code bắt đầu chạy trong project này'}`)
+  if (useAgy) console.log(`    Antigravity CLI: ${agyConversationsFor(projectDir).size} hội thoại – theo dõi ~/.gemini/antigravity-cli`)
   console.log(`    Mở: ${srv.url}\n    Ctrl+C để dừng.\n`)
   if (args.open) openBrowser(srv.url)
 
   const watcher = new TranscriptWatcher(txDir)
   watcher.on('activity', (a) => srv.broadcast(a))
+  const agyWatcher = useAgy ? new AgyWatcher(projectDir) : null
+  agyWatcher?.on('activity', (a) => srv.broadcast(a))
 
-  // nạp sẵn lịch sử gần nhất vào nhật ký (chế độ live)
-  if (!args.replay && txDir) {
-    const h = recentHistory(txDir)
-    if (h?.items.length) {
-      srv.broadcast(h)
-      console.log(`    Nhật ký: nạp ${h.items.length} hoạt động gần nhất của phiên ${h.session.slice(0, 8)}.`)
+  // nạp sẵn lịch sử gần nhất vào nhật ký (chế độ live): Claude Code + Antigravity, ghép theo giờ
+  if (!args.replay) {
+    // mỗi nguồn giữ phần gần nhất của riêng nó (Antigravity có thể cũ hơn Claude Code – không cắt mất)
+    const claude = txDir ? (recentHistory(txDir)?.items ?? []) : []
+    const agy = useAgy ? agyTimeline(projectDir).slice(-40).map(({ t, a }) => ({ at: t, a })) : []
+    const items = [...claude, ...agy].sort((x, y) => x.at - y.at)
+    if (items.length) {
+      srv.broadcast({ type: 'history', session: 'recent', items })
+      console.log(`    Nhật ký: nạp ${items.length} hoạt động gần nhất (Claude Code ${claude.length}, Antigravity ${agy.length}).`)
     }
   }
 
-  if (args.replay && txDir) {
-    const sid = args.session ?? latestSession(txDir)
-    if (sid) {
+  if (args.replay) {
+    const sid = txDir ? (args.session ?? latestSession(txDir)) : null
+    let tl = sid ? sessionTimeline(txDir, sid) : []
+    if (useAgy) {
+      // các hội thoại Antigravity diễn ra trong khoảng thời gian của phiên (vd subagent gọi agy)
+      const from = tl.length ? tl[0].t - 60_000 : 0
+      const to = tl.length ? tl[tl.length - 1].t + 15 * 60_000 : Infinity
+      const agy = agyTimeline(projectDir, { from, to })
+      tl = mergeTimelines(tl, tl.length ? agy : agy.slice(-200))
+    }
+    if (tl.length) {
       await srv.onFirstClient
       await new Promise((r) => setTimeout(r, 1500)) // chờ cảnh 3D tải xong
-      const n = await replay(txDir, sid, args.speed, srv.broadcast)
-      console.log(`    Đã phát lại ${n} sự kiện từ phiên ${sid}.`)
+      const n = await replay(tl, sid ? `phiên ${sid.slice(0, 8)}` : 'Antigravity', args.speed, srv.broadcast)
+      console.log(`    Đã phát lại ${n} sự kiện${sid ? ` từ phiên ${sid}` : ''}.`)
     } else console.log('    Không tìm thấy phiên nào để phát lại.')
   }
   watcher.start()
+  agyWatcher?.start()
   srv.broadcast({ type: 'status', text: txDir ? 'Đang theo dõi transcript' : 'Chưa có transcript' })
 
   // theo dõi thư mục transcript xuất hiện sau (project mới chạy Claude Code lần đầu)
@@ -160,6 +186,7 @@ async function main() {
 
   const stop = () => {
     watcher.stop()
+    agyWatcher?.stop()
     srv.close()
     process.exit(0)
   }

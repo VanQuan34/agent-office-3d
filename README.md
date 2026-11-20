@@ -1,6 +1,6 @@
 # Agent Office 3D
 
-Văn phòng 3D hiển thị các **agent Claude Code** của một project làm việc theo thời gian thực:
+Văn phòng 3D hiển thị các **agent Claude Code** (và **Antigravity CLI**) của một project làm việc theo thời gian thực:
 mỗi agent một phòng, agent chính mang hồ sơ sang phòng subagent khi giao việc, subagent làm xong mang kết quả về.
 
 ## Dùng với project thật
@@ -38,6 +38,7 @@ Cách khác:
 | `agent-office run --replay --session <id> --speed 8` | Phát lại một phiên cụ thể |
 | `agent-office run --port 5000 --no-open` | Đổi cổng, không tự mở trình duyệt |
 | `agent-office agents [project]` | In danh sách agent phát hiện được |
+| `agent-office run --agy` / `--no-agy` | Bật / tắt phòng Antigravity (mặc định tự bật nếu project từng dùng `agy`) |
 
 ### Đọc dữ liệu từ đâu (chỉ đọc, không sửa gì trong project)
 
@@ -57,6 +58,26 @@ Cách khác:
 | Lệnh `Agent` / `Task` giao subagent | Agent chính đứng dậy mang hồ sơ sang phòng subagent; nhiều lệnh song song → đi lần lượt |
 | Subagent xong (kết quả trả về / meta `finished`) | Subagent mang báo cáo về phòng Điều phối |
 | Agent chính trả lời xong (`end_turn`) | Việc được đánh dấu hoàn tất |
+
+### Antigravity CLI (`agy`)
+
+Nếu bạn chat với agent bằng **Antigravity CLI** trong project, văn phòng có thêm phòng **antigravity**:
+
+- **Phát hiện**: CLI đọc `~/.gemini/antigravity-cli/history.jsonl`, lấy các hội thoại có `workspace` trùng thư mục project.
+  Phòng tự bật nếu project từng dùng `agy` (hoặc có agent nhắc tới agy/Antigravity); ép bằng `--agy`, tắt bằng `--no-agy`.
+- **Hoạt động**: đọc `~/.gemini/antigravity-cli/brain/<hội thoại>/.system_generated/logs/transcript.jsonl`
+  – `USER_INPUT` → nhận yêu cầu, `PLANNER_RESPONSE.tool_calls` (`read_file`, `edit_file`, `run_command`, `search_web`…)
+  → bong bóng + nhật ký, phản hồi không còn tool → trả lời xong.
+- **Nối với Claude Code**: khi một agent Claude Code chạy lệnh `agy …` (vd subagent dispatcher) rồi Antigravity nhận
+  yêu cầu, agent đó mang hồ sơ sang phòng Antigravity; Antigravity trả lời xong → mang kết quả về **đúng agent đã gọi**.
+- Chat trực tiếp với `agy` (không qua Claude Code) → Antigravity tự nhận và hoàn tất việc trong phòng của nó.
+- Vẫn chỉ đọc file trên máy, không tốn token.
+
+| Trong Antigravity CLI | Trong văn phòng |
+|---|---|
+| Bạn gửi yêu cầu cho `agy` | Nhân vật phòng antigravity nhận việc |
+| `read_file` / `edit_file` / `write_file` / `run_command` / `search_web` | `📖 Read …`, `✏️ Edit …`, `⌨️ <mô tả lệnh>`, `🌐 Search …` |
+| Trả lời xong | Việc hoàn tất (hoặc mang kết quả về agent Claude Code đã gọi `agy`) |
 
 Văn phòng tự sinh theo số agent: 8 phòng thiết kế sẵn là "mẫu phòng", mỗi agent được gán mẫu theo tên/mô tả
 (reviewer → thư viện, runner/test → kỹ thuật, figma/design → sáng tạo…), mẫu trùng sẽ lật gương; toà nhà nới dài theo số phòng.
@@ -89,7 +110,8 @@ npm run build
 
 ### Cấu trúc
 - `bin/agent-office.mjs` – CLI
-- `server/` – quét agent (`discover.mjs`), đọc transcript live/phát lại (`transcripts.mjs`), HTTP + SSE (`http.mjs`)
+- `server/` – quét agent (`discover.mjs`), đọc transcript Claude Code live/phát lại (`transcripts.mjs`),
+  đọc Antigravity CLI (`antigravity.mjs`), HTTP + SSE (`http.mjs`)
 - `src/sim/` – engine mô phỏng thuần TypeScript: bố cục (`layout.ts`), tìm đường A*, FSM agent
 - `src/sources/` – nguồn sự kiện: `mockSource.ts` (giả lập), `liveSource.ts` (Activity thật → hành động)
 - `src/scene/` – cảnh 3D (React Three Fiber), `src/character/` – nhân vật "Người Mầm" có rig
