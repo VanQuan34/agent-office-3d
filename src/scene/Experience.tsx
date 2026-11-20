@@ -18,7 +18,8 @@ export function Experience() {
   return (
     <>
       <color attach="background" args={['#1d2228']} />
-      <fog attach="fog" args={['#1d2228', 45, 90]} />
+      {/* sương mù bắt đầu sau toà nhà – co giãn theo chiều rộng (văn phòng live dài hơn 36m) */}
+      <fog attach="fog" args={['#1d2228', 60 * ZOOM, 120 * ZOOM]} />
       <Lighting />
       <SimDriver />
       <CameraRig />
@@ -131,7 +132,7 @@ function CameraRig() {
       ref={ref}
       makeDefault
       minDistance={4}
-      maxDistance={55}
+      maxDistance={55 * ZOOM}
       minPolarAngle={0.15}
       maxPolarAngle={1.3}
       dollySpeed={0.6}

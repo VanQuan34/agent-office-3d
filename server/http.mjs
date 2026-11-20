@@ -27,9 +27,12 @@ export function startServer({ distDir, config, host = '127.0.0.1', port }) {
   let backlog = []
   let resolveFirst
   const onFirstClient = new Promise((r) => (resolveFirst = r))
-  const indexHtml = fs
-    .readFileSync(path.join(distDir, 'index.html'), 'utf8')
-    .replace('<head>', `<head><script>window.__AGENT_OFFICE__=${JSON.stringify(config).replace(/</g, '\\u003c')}</script>`)
+  // đọc lại mỗi lần tải trang: build lại giao diện (tên file JS đổi) không làm hỏng server đang chạy
+  const indexHtml = () =>
+    fs
+      .readFileSync(path.join(distDir, 'index.html'), 'utf8')
+      .replace('<head>', `<head><script>window.__AGENT_OFFICE__=${JSON.stringify(config).replace(/</g, '\\u003c')}</script>`)
+  indexHtml() // báo lỗi sớm nếu chưa build
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://x')
@@ -52,7 +55,7 @@ export function startServer({ distDir, config, host = '127.0.0.1', port }) {
     let rel = decodeURIComponent(url.pathname)
     if (rel === '/' || rel === '/index.html') {
       res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-cache' })
-      res.end(indexHtml)
+      res.end(indexHtml())
       return
     }
     const file = path.resolve(distDir, '.' + rel)
